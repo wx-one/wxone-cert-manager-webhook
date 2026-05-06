@@ -39,8 +39,8 @@ query DefaultProject {
 
 	var out struct {
 		DefaultProject struct {
-			Code int        `json:"code"`
-			Err  *string    `json:"err"`
+			Code int         `json:"code"`
+			Err  *string     `json:"err"`
 			Msg  projectItem `json:"msg"`
 		} `json:"getDefaultProject"`
 	}

@@ -28,6 +28,7 @@ spec:
             solverName: wx1
             config:
               host: https://cmd.wx1.eu/api
+              authCacheTTL: 4h
               authSecretRef:
                 name: wx1-dns01-auth
                 namespace: cert-manager

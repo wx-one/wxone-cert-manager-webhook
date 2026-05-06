@@ -23,6 +23,7 @@ Config:
 - host: https://cmd.wx1.eu/api
 - projectId: auto-resolved (optional)
 - zoneId: auto-resolved by domain (optional)
+- authCacheTTL: optional, default 4h
 - authSecretRef: { name, namespace, usernameKey, passwordKey }
 
 You can still set `projectId` explicitly if the zone lives outside the default project.

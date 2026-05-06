@@ -5,16 +5,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	webhookapi "github.com/cert-manager/cert-manager/pkg/acme/webhook/apis/acme/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
 
 type wx1Solver struct {
-	kube kubernetes.Interface
+	kube          kubernetes.Interface
+	authMu        sync.Mutex
+	authCookie    string
+	authExpiresAt time.Time
 }
 
 func (s *wx1Solver) Name() string {
@@ -32,6 +37,7 @@ type solverConfig struct {
 	Host          string    `json:"host"`
 	ProjectID     string    `json:"projectId"`
 	ZoneID        string    `json:"zoneId"`
+	AuthCacheTTL  string    `json:"authCacheTTL"`
 	AuthSecretRef secretRef `json:"authSecretRef"`
 }
 
@@ -55,8 +61,13 @@ func (s *wx1Solver) Present(ch *webhookapi.ChallengeRequest) error {
 		return err
 	}
 
-	cli := newWxOneClient(cfg.Host, "wizardtales.com")
-	if err := cli.Login(context.Background(), username, password); err != nil {
+	ttl, err := parseAuthCacheTTL(cfg.AuthCacheTTL)
+	if err != nil {
+		return err
+	}
+
+	cli, err := s.authedClient(context.Background(), cfg.Host, "wizardtales.com", username, password, ttl)
+	if err != nil {
 		return err
 	}
 
@@ -112,8 +123,13 @@ func (s *wx1Solver) CleanUp(ch *webhookapi.ChallengeRequest) error {
 		return err
 	}
 
-	cli := newWxOneClient(cfg.Host, "wizardtales.com")
-	if err := cli.Login(context.Background(), username, password); err != nil {
+	ttl, err := parseAuthCacheTTL(cfg.AuthCacheTTL)
+	if err != nil {
+		return err
+	}
+
+	cli, err := s.authedClient(context.Background(), cfg.Host, "wizardtales.com", username, password, ttl)
+	if err != nil {
 		return err
 	}
 
@@ -186,8 +202,44 @@ func loadConfig(cfgJSON *apiextensionsv1.JSON, fallbackNS string) (*solverConfig
 	if cfg.AuthSecretRef.PasswordKey == "" {
 		cfg.AuthSecretRef.PasswordKey = "password"
 	}
+	if cfg.AuthCacheTTL == "" {
+		cfg.AuthCacheTTL = "4h"
+	}
 
 	return &cfg, nil
+}
+
+func parseAuthCacheTTL(v string) (time.Duration, error) {
+	if v == "" {
+		v = "4h"
+	}
+	ttl, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, fmt.Errorf("invalid authCacheTTL: %w", err)
+	}
+	if ttl <= 0 {
+		return 0, fmt.Errorf("authCacheTTL must be greater than 0")
+	}
+	return ttl, nil
+}
+
+func (s *wx1Solver) authedClient(ctx context.Context, host, tenant, username, password string, ttl time.Duration) (*wxOneClient, error) {
+	s.authMu.Lock()
+	defer s.authMu.Unlock()
+
+	if s.authCookie != "" && time.Now().Before(s.authExpiresAt) {
+		cli := newWxOneClient(host, tenant)
+		cli.cookie = s.authCookie
+		return cli, nil
+	}
+
+	cli := newWxOneClient(host, tenant)
+	if err := cli.Login(ctx, username, password); err != nil {
+		return nil, err
+	}
+	s.authCookie = cli.cookie
+	s.authExpiresAt = time.Now().Add(ttl)
+	return cli, nil
 }
 
 func resolveProjectID(cli *wxOneClient, projectID string) (string, error) {
