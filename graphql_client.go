@@ -99,6 +99,39 @@ query Zones($projectId: UUID!) {
 	return out.Zones.Msg, nil
 }
 
+func (c *wxOneClient) GetDomainZone(ctx context.Context, projectID, zoneID string) (domainZone, error) {
+	q := `
+query Zone($projectId: UUID!, $id: UUID!) {
+  getDomainZone(projectId: $projectId, id: $id) {
+    code
+    err
+    msg { id domain }
+  }
+}`
+
+	var out struct {
+		Zone struct {
+			Code int        `json:"code"`
+			Err  *string    `json:"err"`
+			Msg  domainZone `json:"msg"`
+		} `json:"getDomainZone"`
+	}
+
+	if err := c.gql(ctx, q, map[string]any{"projectId": projectID, "id": zoneID}, &out); err != nil {
+		return domainZone{}, err
+	}
+	if out.Zone.Code != 200 {
+		if out.Zone.Err != nil {
+			return domainZone{}, fmt.Errorf(*out.Zone.Err)
+		}
+		return domainZone{}, fmt.Errorf("get zone failed: %d", out.Zone.Code)
+	}
+	if out.Zone.Msg.ID == "" {
+		return domainZone{}, fmt.Errorf("zone not found")
+	}
+	return out.Zone.Msg, nil
+}
+
 type rrset struct {
 	Name    string   `json:"name"`
 	Type    string   `json:"type"`

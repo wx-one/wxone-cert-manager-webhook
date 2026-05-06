@@ -84,29 +84,40 @@ func (s *wx1Solver) Present(ch *webhookapi.ChallengeRequest) error {
 	domain := strings.TrimPrefix(fqdn, "_acme-challenge.")
 
 	zoneId := cfg.ZoneID
+	var zone *domainZone
 	if zoneId == "" {
 		zones, err := cli.GetDomainZones(context.Background(), projectId)
 		if err != nil {
 			return err
 		}
-		var matched *domainZone
 		for i, z := range zones {
 			if z.Domain == domain || strings.HasSuffix(domain, "."+z.Domain) {
-				matched = &zones[i]
+				zone = &zones[i]
 				break
 			}
 		}
-		if matched == nil {
+		if zone == nil {
 			return fmt.Errorf("no matching zone found for domain %s", domain)
 		}
-		zoneId = matched.ID
+		zoneId = zone.ID
+	} else {
+		zones, err := cli.GetDomainZone(context.Background(), projectId, zoneId)
+		if err != nil {
+			return err
+		}
+		zone = &zones
+	}
+
+	relName, err := relativeRecordName(fqdn, zone.Domain)
+	if err != nil {
+		return err
 	}
 
 	return cli.EnsureTXT(
 		context.Background(),
 		projectId,
 		zoneId,
-		fqdn,
+		relName,
 		60,
 		ch.Key,
 	)
@@ -146,29 +157,40 @@ func (s *wx1Solver) CleanUp(ch *webhookapi.ChallengeRequest) error {
 	domain := strings.TrimPrefix(fqdn, "_acme-challenge.")
 
 	zoneId := cfg.ZoneID
+	var zone *domainZone
 	if zoneId == "" {
 		zones, err := cli.GetDomainZones(context.Background(), projectId)
 		if err != nil {
 			return err
 		}
-		var matched *domainZone
 		for i, z := range zones {
 			if z.Domain == domain || strings.HasSuffix(domain, "."+z.Domain) {
-				matched = &zones[i]
+				zone = &zones[i]
 				break
 			}
 		}
-		if matched == nil {
+		if zone == nil {
 			return fmt.Errorf("no matching zone found for domain %s", domain)
 		}
-		zoneId = matched.ID
+		zoneId = zone.ID
+	} else {
+		z, err := cli.GetDomainZone(context.Background(), projectId, zoneId)
+		if err != nil {
+			return err
+		}
+		zone = &z
+	}
+
+	relName, err := relativeRecordName(fqdn, zone.Domain)
+	if err != nil {
+		return err
 	}
 
 	return cli.RemoveTXT(
 		context.Background(),
 		projectId,
 		zoneId,
-		fqdn,
+		relName,
 		ch.Key,
 	)
 }
@@ -252,6 +274,22 @@ func resolveProjectID(cli *wxOneClient, projectID string) (string, error) {
 		return "", err
 	}
 	return proj.ID, nil
+}
+
+func relativeRecordName(fqdn, zoneDomain string) (string, error) {
+	if zoneDomain == "" {
+		return "", fmt.Errorf("zone domain is required")
+	}
+	base := strings.TrimSuffix(fqdn, ".")
+	suffix := "." + strings.TrimSuffix(zoneDomain, ".")
+	if base == strings.TrimSuffix(zoneDomain, ".") {
+		return "", nil
+	}
+	if !strings.HasSuffix(base, suffix) {
+		return "", fmt.Errorf("%s is not under zone %s", fqdn, zoneDomain)
+	}
+	name := strings.TrimSuffix(base, suffix)
+	return strings.TrimSuffix(name, "."), nil
 }
 
 func (s *wx1Solver) readCreds(ref secretRef) (string, string, error) {
