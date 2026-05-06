@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wx1-webhook
+  namespace: cert-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wx1-webhook
+  template:
+    metadata:
+      labels:
+        app: wx1-webhook
+    spec:
+      serviceAccountName: wx1-webhook
+      containers:
+        - name: webhook
+          image: wxone/cert-manager-webhook-wxone:dev
+          imagePullPolicy: Always
+          args:
+            - --tls-cert-file=/tls/tls.crt
+            - --tls-private-key-file=/tls/tls.key
+            - --secure-port=6443
+            - --authorization-always-allow-paths=/apis,/apis/acme.wx1.eu,/apis/acme.wx1.eu/v1alpha1
+          ports:
+            - containerPort: 6443
+              name: https
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: wx1-webhook-tls

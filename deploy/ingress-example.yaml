@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wx1-test-ingress
+  namespace: default
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-wx1
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - test.test123.de
+      secretName: test123-tls
+  rules:
+    - host: test.test123.de
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: app
+                port:
+                  number: 80

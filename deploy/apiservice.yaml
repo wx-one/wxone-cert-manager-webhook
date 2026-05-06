@@ -1,0 +1,13 @@
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1alpha1.acme.wx1.eu
+spec:
+  group: acme.wx1.eu
+  version: v1alpha1
+  groupPriorityMinimum: 1000
+  versionPriority: 15
+  service:
+    name: wx1-webhook
+    namespace: cert-manager
+  insecureSkipTLSVerify: true

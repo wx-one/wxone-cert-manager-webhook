@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wx1-webhook
+  namespace: cert-manager
+spec:
+  selector:
+    app: wx1-webhook
+  ports:
+    - name: https
+      port: 443
+      targetPort: 6443
